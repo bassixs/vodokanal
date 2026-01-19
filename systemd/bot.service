@@ -1,0 +1,16 @@
+[Unit]
+Description=Yandex SpeechKit Telegram Bot
+After=network.target
+
+[Service]
+# Change this to your username (e.g. root or ubuntu)
+User=root
+# Change this to the path where you cloned the repo
+WorkingDirectory=/root/vodokanal
+# Command to run (using venv python)
+ExecStart=/root/vodokanal/.venv/bin/python -m bot.main
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

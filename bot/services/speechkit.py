@@ -23,13 +23,31 @@ class SpeechKitService:
     async def submit_recognition(self, file_url: str) -> str:
         """Submits an audio file for asynchronous recognition."""
         headers = self._get_headers()
+        
+        # Determine encoding from extension
+        encoding = "OGG_OPUS" # Default usually expected by Yandex if not specified? 
+        # Actually docs say: "For LPCM ... required. For others ... optional".
+        # But "ogg header not found" usually means it sees bits but expects OGG.
+        
+        lower_url = file_url.lower()
+        if lower_url.endswith(".mp3"):
+            encoding = "MP3"
+        elif lower_url.endswith(".ogg"):
+             encoding = "OGG_OPUS"
+        else:
+             encoding = None # Let it auto-detect or default
+             
+        specification = {
+            "languageCode": "ru-RU",
+            "model": "general",
+        }
+        
+        if encoding:
+            specification["audioEncoding"] = encoding
+        
         body = {
             "config": {
-                "specification": {
-                    "languageCode": "ru-RU",
-                    "model": "general", # or deferred-general
-                    # "audioEncoding": "MP3", # Optional, usually auto-detected
-                }
+                "specification": specification
             },
             "audio": {
                 "uri": file_url
@@ -65,7 +83,29 @@ class SpeechKitService:
                 if data.get("done"):
                     response_data = data.get("response", {})
                     chunks = response_data.get("chunks", [])
-                    full_text = " ".join([chunk.get("alternatives", [{}])[0].get("text", "") for chunk in chunks])
+                    # Join text with Speaker tags if available
+                    # channelTag is usually 1 (left) or 2 (right) for stereo.
+                    # For mono, it's 1. 
+                    
+                    text_parts = []
+                    last_tag = None
+                    
+                    for chunk in chunks:
+                        alt = chunk.get("alternatives", [{}])[0]
+                        text = alt.get("text", "")
+                        
+                        # Try to find speaker info
+                        # In V2 async, sometimes simple channelTag is all we have
+                        tag = chunk.get("channelTag", "1") 
+                        
+                        # If we have the same speaker, just append text
+                        if tag == last_tag and text_parts:
+                            text_parts[-1] += f" {text}"
+                        else:
+                            text_parts.append(f"🔊 [Спикер {tag}]: {text}")
+                            last_tag = tag
+
+                    full_text = "\n".join(text_parts)
                     return full_text
                 
                 return None

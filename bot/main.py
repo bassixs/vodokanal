@@ -12,6 +12,9 @@ from bot.utils import setup_logger
 
 from aiogram.client.session.aiohttp import AiohttpSession
 
+from bot.services.database import DatabaseService
+from bot.worker import BackgroundWorker
+
 async def main():
     # Load environment variables
     load_dotenv()
@@ -25,11 +28,19 @@ async def main():
     if not bot_token:
         logger.error("TELEGRAM_BOT_TOKEN is not set in .env")
         return
+    
+    # Init Database
+    db = DatabaseService()
+    await db.init_db()
 
     # Initialize Bot and Dispatcher with increased timeout
     session = AiohttpSession(timeout=600.0) # 10 minutes timeout
     bot = Bot(token=bot_token, session=session)
     dp = Dispatcher()
+    
+    # Initialize and start Worker
+    worker = BackgroundWorker(bot, db)
+    asyncio.create_task(worker.run())
     
     # Register routers
     dp.include_router(router)

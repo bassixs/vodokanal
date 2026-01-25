@@ -287,11 +287,12 @@ async def voice_message_handler(message: Message, bot: Bot):
         file_id = message.document.file_id
         original_name = message.document.file_name or "document"
         
-        # Override file_type for archive so worker knows
+        # Determine effective file type
+        effective_content_type = message.content_type
         if is_zip:
-            message.content_type = 'application/zip'
+            effective_content_type = 'application/zip'
         elif is_rar:
-            message.content_type = 'application/x-rar-compressed'
+            effective_content_type = 'application/x-rar-compressed'
     else:
         return
 
@@ -299,7 +300,7 @@ async def voice_message_handler(message: Message, bot: Bot):
     try:
         task_id = await db_service.add_task(
             user_id=user_id, 
-            file_type=message.content_type, 
+            file_type=effective_content_type, 
             source_path=file_id, 
             file_name=original_name
         )

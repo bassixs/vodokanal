@@ -223,6 +223,7 @@ async def command_clean_handler(message: Message):
     """
     Cleans up storage manually (S3 and Local).
     """
+    logger.info(f"Received /clean command from user {message.from_user.id}")
     status_msg = await message.reply("🧹 Начинаю очистку хранилища...")
     
     try:

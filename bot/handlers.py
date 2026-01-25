@@ -228,13 +228,12 @@ async def command_clean_handler(message: Message):
     
     try:
         # 1. Clean S3
+        # Clean S3 (FULL WIPE)
         # We assume the storage service instance from global var or create new
         storage = YandexStorageService()
         
-        # Clean 'queue/'
-        count_queue = await storage.cleanup_prefix("queue/")
-        # Clean 'archives/'
-        count_archives = await storage.cleanup_prefix("archives/")
+        # Clean Everything
+        count_s3 = await storage.cleanup_all()
         
         # 2. Clean Local
         import glob
@@ -250,8 +249,7 @@ async def command_clean_handler(message: Message):
         report = (
             f"✅ **Очистка завершена!**\n\n"
             f"☁️ **Яндекс S3:**\n"
-            f"- Удалено из очереди: {count_queue}\n"
-            f"- Удалено из архивов: {count_archives}\n\n"
+            f"- Удалено объектов: {count_s3}\n\n"
             f"🖥 **Локальный диск:**\n"
             f"- Удалено файлов: {count_local}"
         )

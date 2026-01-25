@@ -83,3 +83,8 @@ class YandexStorageService:
         except ClientError as e:
             logger.error(f"Failed to cleanup prefix {prefix}: {e}")
             return 0
+
+    async def cleanup_all(self):
+        """Deletes ALL files in the bucket (dangerous)."""
+        # We reuse cleanup_prefix with empty string to match all
+        return await self.cleanup_prefix("")

@@ -224,7 +224,7 @@ class BackgroundWorker:
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}", exc_info=True)
             await self.db.fail_task(task_id, str(e))
-            # await self.bot.send_message(user_id, f"❌ Задача #{task_id} упала с ошибкой: {e}")
+            await self.bot.send_message(user_id, f"❌ Задача #{task_id} упала с ошибкой: {e}")
             
         finally:
             if os.path.exists(temp_filename):

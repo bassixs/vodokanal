@@ -273,20 +273,27 @@ async def voice_message_handler(message: Message, bot: Bot):
         file_id = message.audio.file_id
         original_name = message.audio.file_name or "audio.mp3"
     elif message.content_type == ContentType.DOCUMENT:
-        mime = message.document.mime_type
-        if mime == 'application/zip' or message.document.file_name.lower().endswith('.zip'):
+        mime = str(message.document.mime_type).lower()
+        fname = message.document.file_name.lower() if message.document.file_name else ""
+        
+        is_zip = mime == 'application/zip' or fname.endswith('.zip')
+        is_rar = 'rar' in mime or fname.endswith('.rar')
+        
+        if is_zip or is_rar:
              # Archive
              pass # Accepted
         elif not mime.startswith('audio/'):
-            await message.reply("📂 Это не аудиофайл и не архив. Пожалуйста, отправьте аудио или .zip архив.")
+            await message.reply("📂 Это не аудиофайл и не архив. Пожалуйста, отправьте аудио или .zip/.rar архив.")
             return
             
         file_id = message.document.file_id
         original_name = message.document.file_name or "document"
         
         # Override file_type for archive so worker knows
-        if original_name.lower().endswith('.zip'):
+        if is_zip:
             message.content_type = 'application/zip'
+        elif is_rar:
+            message.content_type = 'application/x-rar-compressed'
     else:
         return
 

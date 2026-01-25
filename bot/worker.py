@@ -246,18 +246,30 @@ class BackgroundWorker:
                      logger.warning(f"Failed to auto-clean S3: {ex}")
 
     async def handle_archive(self, task_id, user_id, file_id, temp_zip_path):
-        """Unpacks archive and creates sub-tasks."""
+        """Unpacks archive (ZIP or RAR) and creates sub-tasks."""
         extract_dir = f"temp_extract_{task_id}"
         os.makedirs(extract_dir, exist_ok=True)
         
         try:
-            # Download Zip
+            # Download Archive
             file = await self.bot.get_file(file_id)
             await self.bot.download_file(file.file_path, temp_zip_path)
             
+            # Detect type
+            is_rar = temp_zip_path.lower().endswith('.rar')
+            
             # Extract
-            with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(extract_dir)
+            if is_rar:
+                import rarfile
+                # rarfile needs 'unrar' installed on system
+                try:
+                    with rarfile.RarFile(temp_zip_path) as rf:
+                        rf.extractall(extract_dir)
+                except rarfile.RarExecError:
+                    raise Exception("Ошибка распаковки RAR: Убедитесь, что 'unrar' установлен на сервере (sudo apt install unrar).")
+            else:
+                with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(extract_dir)
             
             # Iterate files
             files_found = 0

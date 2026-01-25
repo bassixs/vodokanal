@@ -91,36 +91,17 @@ class SpeechKitService:
                     if chunks:
                         logger.info(f"First chunk sample: {chunks[0]}")
                     
-                    # Join text with Speaker tags if available
-                    # channelTag is usually 1 (left) or 2 (right) for stereo.
-                    # For mono, it's 1. 
-                    
+                    # Simple text concatenation - NO speaker splitting (doesn't work for mono audio)
+                    # Speaker diarization will be done by YandexGPT in cleaned_dialogue
                     text_parts = []
-                    last_tag = None
-                    
-                    # Speaker mapping
-                    speaker_map = {
-                        "1": "Оператор",
-                        "2": "Житель"
-                    }
-                    
                     for chunk in chunks:
                         alt = chunk.get("alternatives", [{}])[0]
                         text = alt.get("text", "")
-                        
-                        # Get channelTag (1 = Operator, 2 = Resident)
-                        tag = chunk.get("channelTag", "1")
-                        speaker_name = speaker_map.get(str(tag), f"Спикер {tag}")
-                        
-                        # If we have the same speaker, just append text
-                        if tag == last_tag and text_parts:
-                            text_parts[-1] += f" {text}"
-                        else:
-                            text_parts.append(f"{speaker_name}: {text}")
-                            last_tag = tag
+                        if text:
+                            text_parts.append(text)
 
-                    full_text = "\n".join(text_parts)
-                    logger.info(f"Formatted text with {len(text_parts)} speaker segments")
+                    full_text = " ".join(text_parts)
+                    logger.info(f"Concatenated {len(text_parts)} text segments")
                     return full_text
                 
                 return None

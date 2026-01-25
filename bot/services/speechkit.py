@@ -39,7 +39,9 @@ class SpeechKitService:
              
         specification = {
             "languageCode": "ru-RU",
-            "model": "general",
+            "model": "general:rc", # Release Candidate - engine from V3
+            "literature_text": True, # Punctuation and normalization
+            "profanity_filter": False, # Keep everything for analysis
         }
         
         if encoding:

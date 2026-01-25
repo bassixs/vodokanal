@@ -42,3 +42,44 @@ class YandexStorageService:
         except ClientError as e:
             logger.error(f"Failed to upload file to S3: {e}")
             raise
+
+    async def delete_file(self, object_name: str):
+        """Deletes a file from S3."""
+        import asyncio
+        from functools import partial
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                partial(self.s3.delete_object, Bucket=self.bucket_name, Key=object_name)
+            )
+            logger.info(f"Deleted file from S3: {object_name}")
+        except ClientError as e:
+            logger.error(f"Failed to delete file {object_name}: {e}")
+
+    async def cleanup_prefix(self, prefix: str):
+        """Deletes all files starting with prefix."""
+        import asyncio
+        from functools import partial
+        try:
+            loop = asyncio.get_running_loop()
+            
+            # List objects
+            response = await loop.run_in_executor(
+                None,
+                partial(self.s3.list_objects_v2, Bucket=self.bucket_name, Prefix=prefix)
+            )
+            
+            if 'Contents' in response:
+                objects_to_delete = [{'Key': obj['Key']} for obj in response['Contents']]
+                if objects_to_delete:
+                    await loop.run_in_executor(
+                        None,
+                        partial(self.s3.delete_objects, Bucket=self.bucket_name, Delete={'Objects': objects_to_delete})
+                    )
+                    logger.info(f"Deleted {len(objects_to_delete)} files with prefix '{prefix}'")
+                    return len(objects_to_delete)
+            return 0
+        except ClientError as e:
+            logger.error(f"Failed to cleanup prefix {prefix}: {e}")
+            return 0

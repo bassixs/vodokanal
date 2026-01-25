@@ -218,6 +218,48 @@ async def command_stats_handler(message: Message):
         logger.error(f"Stats error: {e}", exc_info=True)
         await status_msg.edit_text(f"❌ Ошибка статистики: {e}")
 
+@router.message(Command("clean"))
+async def command_clean_handler(message: Message):
+    """
+    Cleans up storage manually (S3 and Local).
+    """
+    status_msg = await message.reply("🧹 Начинаю очистку хранилища...")
+    
+    try:
+        # 1. Clean S3
+        # We assume the storage service instance from global var or create new
+        storage = YandexStorageService()
+        
+        # Clean 'queue/'
+        count_queue = await storage.cleanup_prefix("queue/")
+        # Clean 'archives/'
+        count_archives = await storage.cleanup_prefix("archives/")
+        
+        # 2. Clean Local
+        import glob
+        local_files = glob.glob("temp_*") + glob.glob("transcript_*") + glob.glob("export_*")
+        count_local = 0
+        for f in local_files:
+            try:
+                os.remove(f)
+                count_local += 1
+            except:
+                pass
+                
+        report = (
+            f"✅ **Очистка завершена!**\n\n"
+            f"☁️ **Яндекс S3:**\n"
+            f"- Удалено из очереди: {count_queue}\n"
+            f"- Удалено из архивов: {count_archives}\n\n"
+            f"🖥 **Локальный диск:**\n"
+            f"- Удалено файлов: {count_local}"
+        )
+        await status_msg.edit_text(report, parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"Cleanup error: {e}", exc_info=True)
+        await status_msg.edit_text(f"❌ Ошибка очистки: {e}")
+
 @router.message(F.content_type.in_([ContentType.VOICE, ContentType.AUDIO, ContentType.DOCUMENT]))
 async def voice_message_handler(message: Message, bot: Bot):
     user_id = message.from_user.id

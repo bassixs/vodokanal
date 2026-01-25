@@ -70,15 +70,25 @@ class YandexStorageService:
                 partial(self.s3.list_objects_v2, Bucket=self.bucket_name, Prefix=prefix)
             )
             
+            logger.info(f"S3 List Response Keys: {response.get('KeyCount')} - {response.keys()}")
+            
             if 'Contents' in response:
                 objects_to_delete = [{'Key': obj['Key']} for obj in response['Contents']]
+                logger.info(f"Found {len(objects_to_delete)} objects to delete: {[o['Key'] for o in objects_to_delete[:5]]}...")
+                
                 if objects_to_delete:
+                    # Batch delete (max 1000)
+                    # We should handle pagination if > 1000, but let's just do one batch for now or loop
+                    # boto3 delete_objects supports up to 1000
                     await loop.run_in_executor(
                         None,
                         partial(self.s3.delete_objects, Bucket=self.bucket_name, Delete={'Objects': objects_to_delete})
                     )
                     logger.info(f"Deleted {len(objects_to_delete)} files with prefix '{prefix}'")
                     return len(objects_to_delete)
+            else:
+                 logger.info("No 'Contents' in S3 response.")
+                 
             return 0
         except ClientError as e:
             logger.error(f"Failed to cleanup prefix {prefix}: {e}")

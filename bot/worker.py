@@ -118,6 +118,8 @@ class BackgroundWorker:
             category_redirect = False
             cleaned_street = None
             cleaned_house = None
+            resident_phrase = None
+            accident_duration = None
             
             try:
                 import json
@@ -139,6 +141,8 @@ class BackgroundWorker:
                 
                 # New Analytics Fields
                 is_relevant_hard = data.get("is_relevant_hard", False)
+                resident_phrase = data.get("resident_phrase", "")
+                accident_duration = data.get("accident_duration", "")
                 
                 stats = data.get("stats_categories", {})
                 category_refusal_works = stats.get("refusal_deadline", False)
@@ -201,7 +205,9 @@ class BackgroundWorker:
                 category_long_duration=category_long_duration,
                 category_redirect=category_redirect,
                 cleaned_street=cleaned_street,
-                cleaned_house=cleaned_house
+                cleaned_house=cleaned_house,
+                resident_phrase=resident_phrase,
+                accident_duration=accident_duration
             )
 
             # 6. Send Report to Group

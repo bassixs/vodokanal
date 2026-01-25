@@ -74,6 +74,15 @@ class DatabaseService:
                 await db.execute("ALTER TABLE tasks ADD COLUMN cleaned_house TEXT")
             except Exception: pass
             
+            # V3.2 Migrations
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN resident_phrase TEXT")
+            except Exception: pass
+            
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN accident_duration TEXT")
+            except Exception: pass
+            
             await db.commit()
             logger.info("Database initialized.")
 
@@ -126,7 +135,9 @@ class DatabaseService:
         category_long_duration=False,
         category_redirect=False,
         cleaned_street=None,
-        cleaned_house=None
+        cleaned_house=None,
+        resident_phrase=None,
+        accident_duration=None
     ):
         """Marks task as completed with results."""
         async with aiosqlite.connect(self.db_path) as db:
@@ -146,13 +157,16 @@ class DatabaseService:
                     category_long_duration = ?,
                     category_redirect = ?,
                     cleaned_street = ?,
-                    cleaned_house = ?
+                    cleaned_house = ?,
+                    resident_phrase = ?,
+                    accident_duration = ?
                 WHERE id = ?
                 """,
                 (
                     summary, sentiment, full_text, address, dialog_type, refusal_marker,
                     is_relevant_hard, category_refusal_works, category_no_brigade, category_long_duration, category_redirect,
                     cleaned_street, cleaned_house,
+                    resident_phrase, accident_duration,
                     task_id
                 )
             )

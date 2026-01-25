@@ -71,32 +71,45 @@ async def command_export_handler(message: Message):
         # Rename columns if they exist
         # We process whatever columns we have, failing gracefully if schema changed
         # Define nice names
+        # V3.2 Requirements: Remove Date/Filename. Add Resident Phrase, Duration.
         column_map = {
             'id': '№ Диалога',
-            'created_at': 'Дата',
-            'file_name': 'Имя файла',
+            # 'created_at': 'Дата', -- Removed by user request
+            # 'file_name': 'Имя файла', -- Removed by user request
             'address': 'Адрес',
-            'result_text': 'Текст Диалога',  # Or Resident Phrase / Operator Phrase if we split them?
-            # Ideally "Phrase Resident" and "Phrase Operator" come from the JSON markers list.
-            # But in the flat table "refusal_marker" is just a string summary.
-            # The User asked for specific columns: "1=No, 2=Address, 3=Resident, 4=Operator, 5=Marker"
-            # Since a dialog can have MULTIPLE markers, this suggests a master-detail or just flattening.
-            # For this MVP export, let's export the "refusal_marker" string which contains "Type (Phrase)".
-            
-            'refusal_marker': 'Маркер Отказа (Фраза оператора)',
+            'resident_phrase': 'Фраза Жителя (Вопрос)',
+            'refusal_marker': 'Фраза Оператора (Маркер/Отказ)',
+            'accident_duration': 'Длительность аварии',
             'dialog_type': 'Тип Обращения',
             'result_summary': 'Саммари'
         }
         
+        # Desired order
+        ordered_columns = [
+            '№ Диалога', 
+            'Адрес', 
+            'Фраза Жителя (Вопрос)', 
+            'Фраза Оператора (Маркер/Отказ)', 
+            'Длительность аварии',
+            'Тип Обращения', 
+            'Саммари'
+        ]
+        
         # Filter only existing columns
-        cols_to_use = [c for c in column_map.keys() if c in df.columns]
-        export_df = df[cols_to_use].rename(columns=column_map)
+        available_cols = [c for c in column_map.keys() if c in df.columns]
+        
+        # Rename first to get friendly names
+        export_df = df[available_cols].rename(columns=column_map)
+        
+        # Reorder columns that exist in the result
+        final_cols = [c for c in ordered_columns if c in export_df.columns]
+        export_df = export_df[final_cols]
         
         filename = f"export_{message.from_user.id}.xlsx"
         export_df.to_excel(filename, index=False)
         
         input_file = FSInputFile(filename)
-        await message.reply_document(input_file, caption="📊 Выгрузка всех задач")
+        await message.reply_document(input_file, caption="📊 Выгрузка всех задач (V3.2)")
         
         os.remove(filename)
         await msg.delete()

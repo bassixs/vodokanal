@@ -92,19 +92,25 @@ class SpeechKitService:
                     text_parts = []
                     last_tag = None
                     
+                    # Speaker mapping
+                    speaker_map = {
+                        "1": "Оператор",
+                        "2": "Житель"
+                    }
+                    
                     for chunk in chunks:
                         alt = chunk.get("alternatives", [{}])[0]
                         text = alt.get("text", "")
                         
-                        # Try to find speaker info
-                        # In V2 async, sometimes simple channelTag is all we have
-                        tag = chunk.get("channelTag", "1") 
+                        # Get channelTag (1 = Operator, 2 = Resident)
+                        tag = chunk.get("channelTag", "1")
+                        speaker_name = speaker_map.get(str(tag), f"Спикер {tag}")
                         
                         # If we have the same speaker, just append text
                         if tag == last_tag and text_parts:
                             text_parts[-1] += f" {text}"
                         else:
-                            text_parts.append(f"🔊 [Спикер {tag}]: {text}")
+                            text_parts.append(f"{speaker_name}: {text}")
                             last_tag = tag
 
                     full_text = "\n".join(text_parts)

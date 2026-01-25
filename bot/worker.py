@@ -229,21 +229,6 @@ class BackgroundWorker:
         finally:
             if os.path.exists(temp_filename):
                 os.remove(temp_filename)
-            
-            # Auto-cleanup S3 to save space (V5)
-            # We delete the file from the queue after processing is done (success or fail)
-            # NOTE: If we want to keep failed files for debug, we should add a check `if not error`.
-            # But the user asked to "clean storage", so getting rid of processed files is key.
-            # We construct the S3 key from the URL or known logic.
-            # URL: https://storage.yandexcloud.net/BUCKET/queue/ID/NAME...
-            # We can just remember object_name if we created it.
-            
-            if 'object_name' in locals() and object_name:
-                 try:
-                     await self.storage_service.delete_file(object_name)
-                     logger.info(f"Auto-cleaned S3 file: {object_name}")
-                 except Exception as ex:
-                     logger.warning(f"Failed to auto-clean S3: {ex}")
 
     async def handle_archive(self, task_id, user_id, file_id, temp_zip_path):
         """Unpacks archive (ZIP or RAR) and creates sub-tasks."""

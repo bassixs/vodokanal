@@ -110,6 +110,15 @@ class BackgroundWorker:
             markers_str = ""
             is_relevant = False
             
+            # Default values
+            is_relevant_hard = False
+            category_refusal_works = False
+            category_no_brigade = False
+            category_long_duration = False
+            category_redirect = False
+            cleaned_street = None
+            cleaned_house = None
+            
             try:
                 import json
                 
@@ -127,7 +136,19 @@ class BackgroundWorker:
                 sentiment = data.get("sentiment", "N/A")
                 address = data.get("address", "Не указан")
                 dialog_type = data.get("dialog_type", "N/A")
-                is_relevant = data.get("is_relevant", False)
+                
+                # New Analytics Fields
+                is_relevant_hard = data.get("is_relevant_hard", False)
+                
+                stats = data.get("stats_categories", {})
+                category_refusal_works = stats.get("refusal_deadline", False)
+                category_no_brigade = stats.get("no_brigade", False)
+                category_long_duration = stats.get("long_duration", False)
+                category_redirect = stats.get("redirect_other_org", False)
+                
+                loc = data.get("location", {})
+                cleaned_street = loc.get("street", "")
+                cleaned_house = loc.get("house", "")
                 
                 markers = data.get("markers", [])
                 if markers:
@@ -172,7 +193,15 @@ class BackgroundWorker:
                 full_text=final_transcript, # Saving the nice dialogue
                 address=address,
                 dialog_type=dialog_type,
-                refusal_marker=markers_str
+                refusal_marker=markers_str,
+                # New V3.1 args
+                is_relevant_hard=is_relevant_hard,
+                category_refusal_works=category_refusal_works,
+                category_no_brigade=category_no_brigade,
+                category_long_duration=category_long_duration,
+                category_redirect=category_redirect,
+                cleaned_street=cleaned_street,
+                cleaned_house=cleaned_house
             )
 
             # 6. Send Report to Group

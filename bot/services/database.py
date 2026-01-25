@@ -35,10 +35,44 @@ class DatabaseService:
             # Migration check (simple)
             try:
                 await db.execute("ALTER TABLE tasks ADD COLUMN address TEXT")
+            except Exception: pass
+            
+            try:
                 await db.execute("ALTER TABLE tasks ADD COLUMN dialog_type TEXT")
+            except Exception: pass
+            
+            try:
                 await db.execute("ALTER TABLE tasks ADD COLUMN refusal_marker TEXT")
-            except Exception:
-                pass # Columns likely exist
+            except Exception: pass
+            
+            # V3.1 Migrations
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN is_relevant_hard BOOLEAN DEFAULT 0")
+            except Exception: pass
+            
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN category_refusal_works BOOLEAN DEFAULT 0")
+            except Exception: pass
+            
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN category_no_brigade BOOLEAN DEFAULT 0")
+            except Exception: pass
+                
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN category_long_duration BOOLEAN DEFAULT 0")
+            except Exception: pass
+                
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN category_redirect BOOLEAN DEFAULT 0")
+            except Exception: pass
+            
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN cleaned_street TEXT")
+            except Exception: pass
+                
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN cleaned_house TEXT")
+            except Exception: pass
             
             await db.commit()
             logger.info("Database initialized.")
@@ -83,12 +117,44 @@ class DatabaseService:
                 rows = await cursor.fetchall()
                 return [dict(row) for row in rows]
 
-    async def complete_task(self, task_id, summary, sentiment, full_text, address=None, dialog_type=None, refusal_marker=None):
+    async def complete_task(
+        self, task_id, summary, sentiment, full_text, 
+        address=None, dialog_type=None, refusal_marker=None,
+        is_relevant_hard=False,
+        category_refusal_works=False,
+        category_no_brigade=False,
+        category_long_duration=False,
+        category_redirect=False,
+        cleaned_street=None,
+        cleaned_house=None
+    ):
         """Marks task as completed with results."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
-                "UPDATE tasks SET status = 'completed', result_summary = ?, result_sentiment = ?, result_text = ?, address = ?, dialog_type = ?, refusal_marker = ? WHERE id = ?",
-                (summary, sentiment, full_text, address, dialog_type, refusal_marker, task_id)
+                """
+                UPDATE tasks SET 
+                    status = 'completed', 
+                    result_summary = ?, 
+                    result_sentiment = ?, 
+                    result_text = ?, 
+                    address = ?, 
+                    dialog_type = ?, 
+                    refusal_marker = ?,
+                    is_relevant_hard = ?,
+                    category_refusal_works = ?,
+                    category_no_brigade = ?,
+                    category_long_duration = ?,
+                    category_redirect = ?,
+                    cleaned_street = ?,
+                    cleaned_house = ?
+                WHERE id = ?
+                """,
+                (
+                    summary, sentiment, full_text, address, dialog_type, refusal_marker,
+                    is_relevant_hard, category_refusal_works, category_no_brigade, category_long_duration, category_redirect,
+                    cleaned_street, cleaned_house,
+                    task_id
+                )
             )
             await db.commit()
 

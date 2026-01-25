@@ -105,6 +105,86 @@ async def command_export_handler(message: Message):
         logger.error(f"Export error: {e}", exc_info=True)
         await msg.edit_text(f"❌ Ошибка выгрузки: {e}")
 
+@router.message(Command("stats"))
+async def command_stats_handler(message: Message):
+    """
+    Generates a statistical report based on V3.1 requirements.
+    1. Counts for 4 specific categories.
+    2. Street clustering (streets with complaints from >= 2 distinct houses).
+    """
+    status_msg = await message.reply("📊 Считаю статистику...")
+    
+    try:
+        tasks = await db_service.get_all_tasks()
+        
+        # 1. Category Counters
+        cat_refusal = 0
+        cat_no_brigade = 0
+        cat_long = 0
+        cat_redirect = 0
+        
+        # 2. Street Clustering Data
+        # Structure: { "street_name": { "house_1", "house_2" } }
+        street_map = {}
+        
+        relevant_count = 0
+        
+        for t in tasks:
+            # Only consider relevant tasks that passed the hard filter
+            if t.get('is_relevant_hard'):
+                relevant_count += 1
+                
+                # Categories
+                if t.get('category_refusal_works'): cat_refusal += 1
+                if t.get('category_no_brigade'): cat_no_brigade += 1
+                if t.get('category_long_duration'): cat_long += 1
+                if t.get('category_redirect'): cat_redirect += 1
+                
+                # Clustering
+                street = t.get('cleaned_street')
+                house = t.get('cleaned_house')
+                
+                if street and house:
+                    # Normalize strict comparison
+                    s_norm = street.strip().lower()
+                    h_norm = house.strip().lower()
+                    
+                    if s_norm not in street_map:
+                        street_map[s_norm] = {'name': street, 'houses': set()}
+                    
+                    street_map[s_norm]['houses'].add(h_norm)
+
+        # Build Report
+        report = (
+            f"📈 **Аналитическая Сводка (V3.1)**\n"
+            f"Всего релевантных диалогов: {relevant_count}\n\n"
+            f"🔍 **По категориям проблем:**\n"
+            f"1. 🚫 Отказ в сроках: **{cat_refusal}**\n"
+            f"2. 🚒 Нет бригады: **{cat_no_brigade}**\n"
+            f"3. ⏳ Длительная (>24ч): **{cat_long}**\n"
+            f"4. ↪️ Перенаправление: **{cat_redirect}**\n\n"
+            f"🏘 **Проблемные улицы (2+ дома):**\n"
+        )
+        
+        # Filter streets with >= 2 distinct houses
+        problem_streets = []
+        for s_key, data in street_map.items():
+            if len(data['houses']) >= 2:
+                # Format: "ул. Ленина (д. 5, 7)"
+                houses_str = ", ".join(sorted(list(data['houses'])))
+                problem_streets.append(f"- {data['name']} (д. {houses_str}) — {len(data['houses'])} заяв(ок)")
+        
+        if problem_streets:
+            report += "\n".join(problem_streets)
+        else:
+            report += "✅ Массовых аварий (разные дома на одной улице) не выявлено."
+            
+        await status_msg.edit_text(report, parse_mode="Markdown")
+        
+    except Exception as e:
+        logger.error(f"Stats error: {e}", exc_info=True)
+        await status_msg.edit_text(f"❌ Ошибка статистики: {e}")
+
 @router.message(F.content_type.in_([ContentType.VOICE, ContentType.AUDIO, ContentType.DOCUMENT]))
 async def voice_message_handler(message: Message, bot: Bot):
     user_id = message.from_user.id

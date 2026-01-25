@@ -19,3 +19,4 @@ analysis_*.txt
 *.oga
 *.ogg
 *.mp3
+bot_database.db

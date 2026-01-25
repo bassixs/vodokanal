@@ -266,10 +266,12 @@ async def voice_message_handler(message: Message, bot: Bot):
     # Determine file_id and file_name based on content type
     if message.content_type == ContentType.VOICE:
         file_id = message.voice.file_id
-        original_name = "voice.ogg" 
+        original_name = "voice.ogg"
+        effective_content_type = ContentType.VOICE
     elif message.content_type == ContentType.AUDIO:
         file_id = message.audio.file_id
         original_name = message.audio.file_name or "audio.mp3"
+        effective_content_type = ContentType.AUDIO
     elif message.content_type == ContentType.DOCUMENT:
         mime = str(message.document.mime_type).lower()
         fname = message.document.file_name.lower() if message.document.file_name else ""
@@ -288,11 +290,13 @@ async def voice_message_handler(message: Message, bot: Bot):
         original_name = message.document.file_name or "document"
         
         # Determine effective file type
-        effective_content_type = message.content_type
         if is_zip:
             effective_content_type = 'application/zip'
         elif is_rar:
             effective_content_type = 'application/x-rar-compressed'
+        else:
+            # Audio file sent as document
+            effective_content_type = ContentType.DOCUMENT
     else:
         return
 

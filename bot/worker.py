@@ -48,7 +48,7 @@ class BackgroundWorker:
 
         try:
             # === ARCHIVE HANDLING ===
-            if file_type == 'application/zip':
+            if file_type in ('application/zip', 'application/x-rar-compressed'):
                 await self.handle_archive(task_id, user_id, source_path, temp_filename)
                 return
 

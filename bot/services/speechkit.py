@@ -85,6 +85,12 @@ class SpeechKitService:
                 if data.get("done"):
                     response_data = data.get("response", {})
                     chunks = response_data.get("chunks", [])
+                    
+                    # Debug logging
+                    logger.info(f"SpeechKit returned {len(chunks)} chunks")
+                    if chunks:
+                        logger.info(f"First chunk sample: {chunks[0]}")
+                    
                     # Join text with Speaker tags if available
                     # channelTag is usually 1 (left) or 2 (right) for stereo.
                     # For mono, it's 1. 
@@ -114,6 +120,7 @@ class SpeechKitService:
                             last_tag = tag
 
                     full_text = "\n".join(text_parts)
+                    logger.info(f"Formatted text with {len(text_parts)} speaker segments")
                     return full_text
                 
                 return None

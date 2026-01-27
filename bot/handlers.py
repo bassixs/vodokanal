@@ -2,16 +2,19 @@ import logging
 from aiogram import Router, F, Bot
 from aiogram.types import Message, ContentType, CallbackQuery, FSInputFile
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
 import os
 from bot.services.storage import YandexStorageService
 from bot.services.speechkit import SpeechKitService
-
 from bot.services.llm import YandexGPTService
+from bot.services.database import DatabaseService
+from bot.states import DateInputStates
+from bot.keyboards import get_period_selection_keyboard
+from bot.date_utils import parse_date, parse_period, get_preset_period, format_date_range
+
 
 router = Router()
 logger = logging.getLogger(__name__)
-
-from bot.services.database import DatabaseService
 
 # Initialize services (Global for router)
 db_service = DatabaseService()
@@ -50,86 +53,92 @@ async def callback_take_task(callback: CallbackQuery):
 
 @router.message(Command("export"))
 async def command_export_handler(message: Message):
+    """
+    Shows period selection keyboard for Excel export.
+    """
+    logger.info(f"User {message.from_user.id} requested /export")
+    keyboard = get_period_selection_keyboard("export")
+    await message.reply(
+        "📅 **Выберите период для выгрузки:**",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("stats"))
+async def command_stats_handler(message: Message):
+    """
+    Shows period selection keyboard for statistics report.
+    """
+    logger.info(f"User {message.from_user.id} requested /stats")
+    keyboard = get_period_selection_keyboard("stats")
+    await message.reply(
+        "📅 **Выберите период для статистики:**",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+# ===== HELPER FUNCTIONS FOR REPORT GENERATION =====
+
+async def generate_excel_report(message: Message, start_date, end_date):
+    """Generates Excel export for the specified date range."""
     import pandas as pd
     
-    msg = await message.reply("⏳ Генерирую отчет...")
+    msg = await message.answer("⏳ Генерирую выгрузку...")
     
     try:
-        tasks = await db_service.get_all_tasks()
+        tasks = await db_service.get_all_tasks(start_date, end_date)
         
         if not tasks:
-            await msg.edit_text("📂 База данных пуста.")
+            date_range = format_date_range(start_date, end_date)
+            await msg.edit_text(f"📭 Нет данных за период **{date_range}**", parse_mode="Markdown")
             return
-
-        # Prepare Data for Excel
-        df = pd.DataFrame(tasks)
         
-        if df.empty:
-             await msg.edit_text("📂 База данных пуста.")
-             return
-
-        # Rename columns if they exist
-        # REQUIRED 7 COLUMNS:
-        # 1 столбец – номер диалога
-        # 2 столбец – номер аудиофайла (имя файла)
-        # 3 столбец – текст звонка (result_text)
-        # 4 столбец – фраза жителя (resident_phrase)
-        # 5 столбец – фраза оператора (из маркеров или пустая? User says "фраза оператора". We only store 'refusal_marker' which contains phrases and type)
-        # 6 столбец – маркер отказа (Same as above? Or split? User list in 5 and 6 columns suggests separate. But we have 'refusal_marker' stored as combined string.)
-        # Let's map 'refusal_marker' to both for now or just put it in one and leave other empty if we can't split easily.
-        # Actually, let's just map as requested:
+        df = pd.DataFrame(tasks)
         
         column_map = {
             'id': 'Номер диалога',
-            'file_name': 'Номер аудиофайла', 
+            'file_name': 'Номер аудиофайла',
             'result_text': 'Текст звонка',
             'resident_phrase': 'Фраза жителя',
-            'refusal_marker': 'Маркер отказа', # This contains "Type (Phrase)"
+            'refusal_marker': 'Маркер отказа',
             'accident_duration': 'Длительность аварии',
         }
         
-        # We need a 5th column "Фраза оператора". Since our `refusal_marker` field is "Type ('Phrase')", 
-        # we can try to duplicate it or just provide the full marker string in both if fuzzy.
-        # Ideally we would split it, but for now let's reuse.
-        # Wait, column 5 is "Phrase Operator", column 6 is "Marker".
-        # Let's add a calculated column for "Operator Phrase" based on "Refusal Marker" string.
-        
+        # Add operator phrase column (duplicate of refusal_marker for now)
         if 'refusal_marker' in df.columns:
-            # Simple extraction regex if format is "Type ('Phrase')"
-            # If multiple markers, it's semicolon separated.
-            # Let's just copy the column for now to ensure column exists.
-            df['Фраза оператора'] = df['refusal_marker'] 
+            df['Фраза оператора'] = df['refusal_marker']
         else:
-             df['Фраза оператора'] = ""
-
+            df['Фраза оператора'] = ""
+        
         ordered_columns = [
-            'Номер диалога', 
-            'Номер аудиофайла', 
-            'Текст звонка', 
-            'Фраза жителя', 
-            'Фраза оператора', 
-            'Маркер отказа', 
+            'Номер диалога',
+            'Номер аудиофайла',
+            'Текст звонка',
+            'Фраза жителя',
+            'Фраза оператора',
+            'Маркер отказа',
             'Длительность аварии'
         ]
         
-        # Filter only existing columns (using mapped names)
-        # First rename what we can
-        rename_map = {k:v for k,v in column_map.items() if k in df.columns}
+        rename_map = {k: v for k, v in column_map.items() if k in df.columns}
         export_df = df.rename(columns=rename_map)
         
-        # Ensure all ordered columns exist (add empty if missing)
         for col in ordered_columns:
             if col not in export_df.columns:
                 export_df[col] = ""
-                
-        # Select final order
+        
         export_df = export_df[ordered_columns]
         
         filename = f"export_{message.from_user.id}.xlsx"
         export_df.to_excel(filename, index=False)
         
+        date_range = format_date_range(start_date, end_date)
         input_file = FSInputFile(filename)
-        await message.reply_document(input_file, caption="📊 Выгрузка таблицы (7 столбцов)")
+        await message.answer_document(
+            input_file,
+            caption=f"📊 **Выгрузка за период {date_range}**\n📝 Записей: **{len(tasks)}**",
+            parse_mode="Markdown"
+        )
         
         os.remove(filename)
         await msg.delete()
@@ -138,47 +147,42 @@ async def command_export_handler(message: Message):
         logger.error(f"Export error: {e}", exc_info=True)
         await msg.edit_text(f"❌ Ошибка выгрузки: {e}")
 
-@router.message(Command("stats"))
-async def command_stats_handler(message: Message):
-    """
-    Generates a statistical report based on V3.1 requirements.
-    1. Counts for 4 specific categories.
-    2. Street clustering (streets with complaints from >= 2 distinct houses).
-    """
-    status_msg = await message.reply("📊 Считаю статистику...")
+
+async def generate_stats_report(message: Message, start_date, end_date):
+    """Generates statistics report for the specified date range."""
+    status_msg = await message.answer("📊 Считаю статистику...")
     
     try:
-        tasks = await db_service.get_all_tasks()
+        tasks = await db_service.get_all_tasks(start_date, end_date)
         
-        # 1. Category Counters
+        if not tasks:
+            date_range = format_date_range(start_date, end_date)
+            await status_msg.edit_text(f"📭 Нет данных за период **{date_range}**", parse_mode="Markdown")
+            return
+        
+        # Category counters
         cat_refusal = 0
         cat_no_brigade = 0
         cat_long = 0
         cat_redirect = 0
         
-        # 2. Street Clustering Data
-        # Structure: { "street_name": { "house_1", "house_2" } }
+        # Street clustering
         street_map = {}
-        
         relevant_count = 0
         
         for t in tasks:
-            # Only consider relevant tasks that passed the hard filter
             if t.get('is_relevant_hard'):
                 relevant_count += 1
                 
-                # Categories
                 if t.get('category_refusal_works'): cat_refusal += 1
                 if t.get('category_no_brigade'): cat_no_brigade += 1
                 if t.get('category_long_duration'): cat_long += 1
                 if t.get('category_redirect'): cat_redirect += 1
                 
-                # Clustering
                 street = t.get('cleaned_street')
                 house = t.get('cleaned_house')
                 
                 if street and house:
-                    # Normalize strict comparison
                     s_norm = street.strip().lower()
                     h_norm = house.strip().lower()
                     
@@ -186,11 +190,13 @@ async def command_stats_handler(message: Message):
                         street_map[s_norm] = {'name': street, 'houses': set()}
                     
                     street_map[s_norm]['houses'].add(h_norm)
-
-        # Build Report
+        
+        date_range = format_date_range(start_date, end_date)
+        
         report = (
-            f"📈 **Аналитическая Сводка (V3.1)**\n"
-            f"Всего релевантных диалогов: {relevant_count}\n\n"
+            f"📈 **Аналитическая Сводка**\n"
+            f"📅 Период: **{date_range}**\n"
+            f"Всего релевантных диалогов: **{relevant_count}**\n\n"
             f"🔍 **По категориям проблем:**\n"
             f"1. 🚫 Отказ в сроках: **{cat_refusal}**\n"
             f"2. 🚒 Нет бригады: **{cat_no_brigade}**\n"
@@ -199,11 +205,9 @@ async def command_stats_handler(message: Message):
             f"🏘 **Проблемные улицы (2+ дома):**\n"
         )
         
-        # Filter streets with >= 2 distinct houses
         problem_streets = []
         for s_key, data in street_map.items():
             if len(data['houses']) >= 2:
-                # Format: "ул. Ленина (д. 5, 7)"
                 houses_str = ", ".join(sorted(list(data['houses'])))
                 problem_streets.append(f"- {data['name']} (д. {houses_str}) — {len(data['houses'])} заяв(ок)")
         
@@ -211,12 +215,122 @@ async def command_stats_handler(message: Message):
             report += "\n".join(problem_streets)
         else:
             report += "✅ Массовых аварий (разные дома на одной улице) не выявлено."
-            
+        
         await status_msg.edit_text(report, parse_mode="Markdown")
         
     except Exception as e:
         logger.error(f"Stats error: {e}", exc_info=True)
         await status_msg.edit_text(f"❌ Ошибка статистики: {e}")
+
+
+# ===== CALLBACK HANDLER FOR PERIOD SELECTION =====
+
+@router.callback_query(F.data.startswith("period:"))
+async def period_callback_handler(callback: CallbackQuery, state: FSMContext):
+    """Handles period selection from inline keyboard."""
+    # Parse callback data: period:{command_type}:{period_type}
+    parts = callback.data.split(":")
+    command_type = parts[1]  # "export" or "stats"
+    period_type = parts[2]   # "today", "yesterday", "week", "month", "custom"
+    
+    if period_type == "custom":
+        # Enter FSM for custom date input
+        if command_type == "export":
+            await state.set_state(DateInputStates.waiting_export_date)
+        else:
+            await state.set_state(DateInputStates.waiting_stats_date)
+        
+        await callback.message.edit_text(
+            "📝 **Введите период:**\n\n"
+            "• Конкретный день: `DD.MM.YYYY`\n"
+            "• Период: `с DD.MM.YYYY по DD.MM.YYYY`\n\n"
+            "Например: `27.01.2026` или `с 20.01.2026 по 27.01.2026`",
+            parse_mode="Markdown"
+        )
+    else:
+        # Preset period
+        start_date, end_date = get_preset_period(period_type)
+        
+        # Delete the keyboard message
+        await callback.message.delete()
+        
+        # Generate report
+        if command_type == "export":
+            await generate_excel_report(callback.message, start_date, end_date)
+        else:
+            await generate_stats_report(callback.message, start_date, end_date)
+    
+    await callback.answer()
+
+
+# ===== FSM HANDLERS FOR CUSTOM DATE INPUT =====
+
+@router.message(DateInputStates.waiting_export_date)
+async def export_custom_date_handler(message: Message, state: FSMContext):
+    """Handles custom date input for /export command."""
+    user_input = message.text.strip()
+    
+    # Try parsing as period
+    period = parse_period(user_input)
+    if period:
+        start_date, end_date = period
+        await state.clear()
+        await generate_excel_report(message, start_date, end_date)
+        return
+    
+    # Try parsing as single date
+    date = parse_date(user_input)
+    if date:
+        # Full day period
+        start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        await state.clear()
+        await generate_excel_report(message, start_date, end_date)
+        return
+    
+    # Validation error
+    await message.reply(
+        "❌ **Неверный формат даты.**\n\n"
+        "Примеры корректного ввода:\n"
+        "• `27.01.2026`\n"
+        "• `с 20.01.2026 по 27.01.2026`",
+        parse_mode="Markdown"
+    )
+
+
+@router.message(DateInputStates.waiting_stats_date)
+async def stats_custom_date_handler(message: Message, state: FSMContext):
+    """Handles custom date input for /stats command."""
+    user_input = message.text.strip()
+    
+    # Try parsing as period
+    period = parse_period(user_input)
+    if period:
+        start_date, end_date = period
+        await state.clear()
+        await generate_stats_report(message, start_date, end_date)
+        return
+    
+    # Try parsing as single date
+    date = parse_date(user_input)
+    if date:
+        # Full day period
+        start_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = date.replace(hour=23, minute=59, second=59, microsecond=999999)
+        await state.clear()
+        await generate_stats_report(message, start_date, end_date)
+        return
+    
+    # Validation error
+    await message.reply(
+        "❌ **Неверный формат даты.**\n\n"
+        "Примеры корректного ввода:\n"
+        "• `27.01.2026`\n"
+        "• `с 20.01.2026 по 27.01.2026`",
+        parse_mode="Markdown"
+    )
+
+
 
 @router.message(Command("clean"))
 async def command_clean_handler(message: Message):

@@ -14,6 +14,8 @@ from aiogram.client.session.aiohttp import AiohttpSession
 
 from bot.services.database import DatabaseService
 from bot.worker import BackgroundWorker
+from aiogram.fsm.storage.memory import MemoryStorage
+
 
 async def main():
     # Load environment variables
@@ -33,10 +35,14 @@ async def main():
     db = DatabaseService()
     await db.init_db()
 
+    
     # Initialize Bot and Dispatcher with increased timeout
     session = AiohttpSession(timeout=600.0) # 10 minutes timeout
     bot = Bot(token=bot_token, session=session)
-    dp = Dispatcher()
+    
+    # Initialize FSM storage
+    storage = MemoryStorage()
+    dp = Dispatcher(storage=storage)
     
     # Initialize and start Worker
     worker = BackgroundWorker(bot, db)

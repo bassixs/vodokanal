@@ -83,6 +83,20 @@ class DatabaseService:
                 await db.execute("ALTER TABLE tasks ADD COLUMN accident_duration TEXT")
             except Exception: pass
             
+            # V4.0 Migration: Add completed_at timestamp for date filtering
+            try:
+                await db.execute("ALTER TABLE tasks ADD COLUMN completed_at TIMESTAMP")
+            except Exception: pass
+            
+            # Backfill completed_at for existing completed tasks (use created_at as fallback)
+            try:
+                await db.execute("""
+                    UPDATE tasks 
+                    SET completed_at = created_at 
+                    WHERE status = 'completed' AND completed_at IS NULL
+                """)
+            except Exception: pass
+            
             await db.commit()
             logger.info("Database initialized.")
 
@@ -118,13 +132,33 @@ class DatabaseService:
                 }
             return None
 
-    async def get_all_tasks(self):
-        """Retrieves all tasks for export."""
+    async def get_all_tasks(self, start_date=None, end_date=None):
+        """Retrieves all tasks for export, optionally filtered by completion date range."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM tasks ORDER BY id DESC") as cursor:
-                rows = await cursor.fetchall()
-                return [dict(row) for row in rows]
+            
+            # Build query with optional date filtering
+            if start_date and end_date:
+                query = """
+                    SELECT * FROM tasks 
+                    WHERE completed_at >= ? AND completed_at <= ?
+                    ORDER BY id DESC
+                """
+                async with db.execute(query, (start_date, end_date)) as cursor:
+                    rows = await cursor.fetchall()
+            elif start_date:
+                query = "SELECT * FROM tasks WHERE completed_at >= ? ORDER BY id DESC"
+                async with db.execute(query, (start_date,)) as cursor:
+                    rows = await cursor.fetchall()
+            elif end_date:
+                query = "SELECT * FROM tasks WHERE completed_at <= ? ORDER BY id DESC"
+                async with db.execute(query, (end_date,)) as cursor:
+                    rows = await cursor.fetchall()
+            else:
+                async with db.execute("SELECT * FROM tasks ORDER BY id DESC") as cursor:
+                    rows = await cursor.fetchall()
+                    
+            return [dict(row) for row in rows]
 
     async def complete_task(
         self, task_id, summary, sentiment, full_text, 
@@ -159,7 +193,8 @@ class DatabaseService:
                     cleaned_street = ?,
                     cleaned_house = ?,
                     resident_phrase = ?,
-                    accident_duration = ?
+                    accident_duration = ?,
+                    completed_at = CURRENT_TIMESTAMP
                 WHERE id = ?
                 """,
                 (

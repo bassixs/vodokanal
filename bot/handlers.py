@@ -143,6 +143,9 @@ async def generate_excel_report(message: Message, start_date, end_date):
         os.remove(filename)
         await msg.delete()
         
+        # Automatically generate stats report for the same period
+        await generate_stats_report(message, start_date, end_date)
+        
     except Exception as e:
         logger.error(f"Export error: {e}", exc_info=True)
         await msg.edit_text(f"❌ Ошибка выгрузки: {e}")

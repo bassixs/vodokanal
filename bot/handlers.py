@@ -206,34 +206,37 @@ async def generate_excel_report(message: Message, start_date, end_date):
     try:
         tasks = await db_service.get_all_tasks(start_date, end_date)
         
-        if not tasks:
+        # Filter only relevant calls (exclude payments, meters, etc.)
+        relevant_tasks = [t for t in tasks if t.get('is_relevant_hard')]
+        
+        if not relevant_tasks:
             date_range = format_date_range(start_date, end_date)
-            await msg.edit_text(f"📭 Нет данных за период **{date_range}**", parse_mode="Markdown")
+            await msg.edit_text(f"📭 Нет релевантных данных за период **{date_range}**", parse_mode="Markdown")
             return
         
-        df = pd.DataFrame(tasks)
+        df = pd.DataFrame(relevant_tasks)
         
         column_map = {
             'id': 'Номер диалога',
             'file_name': 'Номер аудиофайла',
             'result_text': 'Текст звонка',
-            'resident_phrase': 'Фраза жителя',
+            'resident_phrase': 'Ключевые фразы жителя',
             'refusal_marker': 'Маркер отказа',
             'accident_duration': 'Длительность аварии',
         }
         
         # Add operator phrase column (duplicate of refusal_marker for now)
         if 'refusal_marker' in df.columns:
-            df['Фраза оператора'] = df['refusal_marker']
+            df['Ключевые фразы оператора'] = df['refusal_marker']
         else:
-            df['Фраза оператора'] = ""
+            df['Ключевые фразы оператора'] = ""
         
         ordered_columns = [
             'Номер диалога',
             'Номер аудиофайла',
             'Текст звонка',
-            'Фраза жителя',
-            'Фраза оператора',
+            'Ключевые фразы жителя',
+            'Ключевые фразы оператора',
             'Маркер отказа',
             'Длительность аварии'
         ]
@@ -254,7 +257,7 @@ async def generate_excel_report(message: Message, start_date, end_date):
         input_file = FSInputFile(filename)
         await message.answer_document(
             input_file,
-            caption=f"📊 **Выгрузка за период {date_range}**\n📝 Записей: **{len(tasks)}**",
+            caption=f"📊 **Выгрузка за период {date_range}**\n📝 Релевантных записей: **{len(relevant_tasks)}**",
             parse_mode="Markdown"
         )
         
@@ -336,6 +339,36 @@ async def generate_stats_report(message: Message, start_date, end_date):
             report += "\n".join(problem_streets)
         else:
             report += "✅ Массовых аварий (разные дома на одной улице) не выявлено."
+        
+        # Long-duration accidents (>24h from residents' words)
+        long_accidents = []
+        for t in tasks:
+            if t.get('is_relevant_hard') and t.get('category_long_duration'):
+                street = t.get('cleaned_street') or 'Адрес не указан'
+                house = t.get('cleaned_house') or ''
+                duration = t.get('accident_duration') or 'не указана'
+                dialog_id = t.get('id')
+                
+                address_str = f"{street}"
+                if house:
+                    address_str += f", д. {house}"
+                
+                long_accidents.append({
+                    'address': address_str,
+                    'duration': duration,
+                    'dialog_id': dialog_id
+                })
+        
+        # Add long accidents section
+        report += "\n\n⏰ **Длительные аварии (\u003e24ч):**\n"
+        report += "_Со слов жителей_\n"
+        
+        if long_accidents:
+            for acc in long_accidents:
+                report += f"\n• {acc['address']} — **{acc['duration']}**\n"
+                report += f"  _Диалог #{acc['dialog_id']}_"
+        else:
+            report += "\n✅ Длительных аварий (\u003e24ч) не выявлено."
         
         await status_msg.edit_text(report, parse_mode="Markdown")
         
